@@ -1,6 +1,4 @@
-
-
-% extends "base.html" %}
+{% extends "base.html" %}
 
 {% block title %}Mark Attendance - SAMS{% endblock %}
 
@@ -14,19 +12,6 @@
             <strong>Date:</strong> {{ session_obj.date }} | 
             <strong>Time:</strong> {{ session_obj.start_time.strftime('%H:%M') }} - {{ session_obj.end_time.strftime('%H:%M') }}
         </p>
-        
-        {# Show finalized status #}
-        {% if session_obj.is_finalized %}
-        <div class="alert alert-warning">
-            <i class="bi bi-lock-fill"></i> <strong>This session has been finalized and locked.</strong> 
-            No further edits are allowed.
-        </div>
-        {% elif not can_edit %}
-        <div class="alert alert-danger">
-            <i class="bi bi-clock-history"></i> <strong>24-hour edit window has expired.</strong> 
-            This session is now locked automatically.
-        </div>
-        {% endif %}
     </div>
     <div class="col-md-4 text-end">
         <a href="{{ url_for('faculty_class_detail', class_id=session_obj.class_id) }}" class="btn btn-secondary">
@@ -36,17 +21,16 @@
 </div>
 
 <!-- Instructions -->
-{% if can_edit and not session_obj.is_finalized %}
 <div class="alert alert-info">
     <h5><i class="bi bi-info-circle"></i> How to Mark Attendance:</h5>
     <ol class="mb-0">
-        <li>Click <span class="badge bg-success">Present</span>, <span class="badge bg-warning">Late</span>, or <span class="badge bg-danger">Absent</span> buttons</li>
-        <li>Changes save instantly - no confirmation needed!</li>
-        <li>You can change attendance anytime within 24 hours</li>
-        <li><strong>Click "Submit Final Attendance" when done to lock the session</strong></li>
+        <li>Click <span class="badge bg-success">Present</span> for students who attended</li>
+        <li>Click <span class="badge bg-danger">Absent</span> for students who didn't attend</li>
+        <li>Click <span class="badge bg-warning">Late</span> for students who came late</li>
+        <li>Changes are saved instantly - no submit button needed!</li>
+        <li><strong>You can change attendance anytime by clicking a different status button</strong></li>
     </ol>
 </div>
-{% endif %}
 
 <div class="row">
     <!-- Attendance Marking Table -->
@@ -92,8 +76,8 @@
                                     </span>
                                 </td>
                                 <td>
-                                    {% if can_edit and not session_obj.is_finalized %}
                                         <div class="btn-group" role="group">
+                                            {# Always show edit controls. If a record exists, attach its id; otherwise leave empty so JS will create a record on first edit. #}
                                             {% if enrollment.student.id in attendance_records %}
                                                 {% set record = attendance_records[enrollment.student.id] %}
                                                 {% set aid = record.id %}
@@ -107,7 +91,7 @@
                                                     data-student="{{ enrollment.student.id }}"
                                                     data-status="present"
                                                     title="Mark Present">
-                                                <i class="bi bi-check-lg"></i>
+                                                <i class="bi bi-check-lg"></i> P
                                             </button>
                                             <button class="btn btn-sm btn-warning edit-attendance" 
                                                     data-attendance-id="{{ aid }}"
@@ -115,7 +99,7 @@
                                                     data-student="{{ enrollment.student.id }}"
                                                     data-status="late"
                                                     title="Mark Late">
-                                                <i class="bi bi-clock"></i>
+                                                <i class="bi bi-clock"></i> L
                                             </button>
                                             <button class="btn btn-sm btn-danger edit-attendance" 
                                                     data-attendance-id="{{ aid }}"
@@ -123,12 +107,9 @@
                                                     data-student="{{ enrollment.student.id }}"
                                                     data-status="absent"
                                                     title="Mark Absent">
-                                                <i class="bi bi-x-lg"></i>
+                                                <i class="bi bi-x-lg"></i> A
                                             </button>
                                         </div>
-                                    {% else %}
-                                        <span class="text-muted"><i class="bi bi-lock"></i> Locked</span>
-                                    {% endif %}
                                 </td>
                             </tr>
                             {% endfor %}
@@ -139,22 +120,17 @@
         </div>
 
         <!-- Quick Actions -->
-        {% if can_edit and not session_obj.is_finalized %}
         <div class="card mt-3">
             <div class="card-body">
                 <h6><i class="bi bi-lightning"></i> Quick Actions:</h6>
                 <button class="btn btn-success me-2" id="markAllPresent">
                     <i class="bi bi-check-all"></i> Mark All Present
                 </button>
-                <button class="btn btn-danger me-2" id="markAllAbsent">
+                <button class="btn btn-danger" id="markAllAbsent">
                     <i class="bi bi-x-circle"></i> Mark All Absent
-                </button>
-                <button class="btn btn-primary" id="finalizeBtn">
-                    <i class="bi bi-lock-fill"></i> Submit Final Attendance
                 </button>
             </div>
         </div>
-        {% endif %}
     </div>
 
     <div class="col-md-4">
@@ -178,37 +154,6 @@
                         <small>Absent</small>
                     </div>
                 </div>
-                <hr>
-                <div class="text-center">
-                    <h5 id="unmarked-count" class="text-muted">0</h5>
-                    <small>Not Marked</small>
-                </div>
-            </div>
-        </div>
-
-        <!-- Session Info -->
-        <div class="card mt-3">
-            <div class="card-header bg-info text-white">
-                <h6 class="mb-0"><i class="bi bi-info-circle"></i> Session Info</h6>
-            </div>
-            <div class="card-body">
-                <p class="mb-2"><strong>Status:</strong> 
-                    {% if session_obj.is_finalized %}
-                        <span class="badge bg-warning"><i class="bi bi-lock-fill"></i> Finalized</span>
-                    {% elif can_edit %}
-                        <span class="badge bg-success"><i class="bi bi-unlock"></i> Editable</span>
-                    {% else %}
-                        <span class="badge bg-secondary"><i class="bi bi-clock-history"></i> Expired</span>
-                    {% endif %}
-                </p>
-                <p class="mb-0"><strong>Created:</strong><br>
-                    <small>{{ session_obj.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
-                </p>
-                {% if session_obj.is_finalized %}
-                <p class="mb-0 mt-2"><strong>Finalized:</strong><br>
-                    <small>{{ session_obj.finalized_at.strftime('%Y-%m-%d %H:%M') }}</small>
-                </p>
-                {% endif %}
             </div>
         </div>
     </div>
@@ -218,30 +163,81 @@
 {% block extra_js %}
 <script>
 $(document).ready(function() {
-    var canEdit = "{{ can_edit and not session_obj.is_finalized }}" === "True";
-    
     // Update statistics
     function updateStats() {
         let presentCount = $('span.badge.bg-success:contains("Present")').length;
         let lateCount = $('span.badge.bg-warning:contains("Late")').length;
         let absentCount = $('span.badge.bg-danger:contains("Absent")').length;
-        let unmarkedCount = $('span.badge.bg-secondary:contains("Not Marked")').length;
         
         $('#present-count').text(presentCount);
         $('#late-count').text(lateCount);
         $('#absent-count').text(absentCount);
-        $('#unmarked-count').text(unmarkedCount);
     }
     
     // Initial stats update
     updateStats();
     
-    // Only attach handlers if editing is allowed
-    if (!canEdit) {
-        return;
-    }
+    // Mark NEW attendance (for students not yet marked)
+    $('.mark-attendance').click(function() {
+        var button = $(this);
+        var sessionId = button.data('session');
+        var studentId = button.data('student');
+        var status = button.data('status');
+        
+        // Disable button during request
+        button.prop('disabled', true);
+        
+        $.post('{{ url_for("faculty_mark_attendance") }}', {
+            session_id: sessionId,
+            student_id: studentId,
+            status: status
+        }, function(data) {
+            if (data.success) {
+                // Update badge
+                var badgeHtml = '';
+                if (status === 'present') {
+                    badgeHtml = '<span class="badge bg-success">Present</span>';
+                } else if (status === 'late') {
+                    badgeHtml = '<span class="badge bg-warning">Late</span>';
+                } else if (status === 'absent') {
+                    badgeHtml = '<span class="badge bg-danger">Absent</span>';
+                }
+                
+                $('#status-badge-' + studentId).html(badgeHtml);
+                
+                // Highlight row briefly
+                $('#student-row-' + studentId).addClass('table-success');
+                setTimeout(function() {
+                    $('#student-row-' + studentId).removeClass('table-success');
+                }, 1000);
+                
+                // Update stats
+                updateStats();
+                
+                // Replace the action buttons with edit-attendance buttons (use returned attendance_id if present)
+                var attendanceId = data.attendance_id || '';
+                var editButtons = '' +
+                    '<button class="btn btn-sm btn-success edit-attendance" data-attendance-id="' + attendanceId + '" data-student="' + studentId + '" data-status="present" title="Mark Present"><i class="bi bi-check-lg"></i></button>' +
+                    '<button class="btn btn-sm btn-warning edit-attendance" data-attendance-id="' + attendanceId + '" data-student="' + studentId + '" data-status="late" title="Mark Late"><i class="bi bi-clock"></i></button>' +
+                    '<button class="btn btn-sm btn-danger edit-attendance" data-attendance-id="' + attendanceId + '" data-student="' + studentId + '" data-status="absent" title="Mark Absent"><i class="bi bi-x-lg"></i></button>';
+
+                // Find the actions cell for this row and replace content
+                $('#student-row-' + studentId + ' td').last().find('.btn-group').html(editButtons);
+
+                // No page reload — newly inserted edit buttons will be handled by delegated listener below
+            } else {
+                alert('Error: ' + data.message);
+            }
+            
+            // Re-enable button
+            button.prop('disabled', false);
+        }).fail(function() {
+            alert('Failed to mark attendance. Please try again.');
+            button.prop('disabled', false);
+        });
+    });
     
-    // Delegated handler for edit-attendance buttons (NO CONFIRMATION POPUP!)
+    // Delegated handler for edit-attendance buttons (works for dynamically added buttons)
     $(document).on('click', '.edit-attendance', function() {
         var button = $(this);
         var attendanceId = button.data('attendance-id') || '';
@@ -249,60 +245,62 @@ $(document).ready(function() {
         var studentId = button.data('student');
         var sessionId = button.data('session');
 
+        if (!confirm('Change attendance status to ' + newStatus.toUpperCase() + '?')) {
+            return;
+        }
+
         // Show loading
         var originalHtml = button.html();
         button.html('<i class="bi bi-hourglass-split"></i>');
         button.prop('disabled', true);
 
         if (!attendanceId) {
-            // No attendance exists yet - create it
-            $.ajax({
-                url: '{{ url_for("faculty_mark_attendance") }}',
+            // No attendance exists yet - create it by calling the faculty marking endpoint
+            var form = new FormData();
+            form.append('session_id', sessionId);
+            form.append('student_id', studentId);
+            form.append('status', newStatus);
+
+            fetch('{{ url_for("faculty_mark_attendance") }}', {
                 method: 'POST',
-                data: {
-                    session_id: sessionId,
-                    student_id: studentId,
-                    status: newStatus
-                },
-                success: function(data) {
-                    if (data.success) {
-                        // Update badge
-                        var badgeHtml = '';
-                        if (newStatus === 'present') badgeHtml = '<span class="badge bg-success">Present</span>';
-                        else if (newStatus === 'late') badgeHtml = '<span class="badge bg-warning">Late</span>';
-                        else if (newStatus === 'absent') badgeHtml = '<span class="badge bg-danger">Absent</span>';
-                        
-                        $('#status-badge-' + studentId).html(badgeHtml);
-                        
-                        // Flash the row
-                        $('#student-row-' + studentId).addClass('table-success');
-                        setTimeout(function() {
-                            $('#student-row-' + studentId).removeClass('table-success');
-                        }, 500);
-                        
-                        updateStats();
+                credentials: 'same-origin',
+                body: form
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update badge
+                    var badgeHtml = '';
+                    if (newStatus === 'present') badgeHtml = '<span class="badge bg-success">Present</span>';
+                    if (newStatus === 'late') badgeHtml = '<span class="badge bg-warning">Late</span>';
+                    if (newStatus === 'absent') badgeHtml = '<span class="badge bg-danger">Absent</span>';
+                    $('#status-badge-' + studentId).html(badgeHtml);
+                    updateStats();
 
-                        // Update all buttons with the new attendance ID
-                        var newAid = data.attendance_id || '';
-                        $('#student-row-' + studentId).find('.edit-attendance').attr('data-attendance-id', newAid);
+                    // Set returned attendance_id on all buttons for this student
+                    var newAid = data.attendance_id || '';
+                    $('#student-row-' + studentId).find('.edit-attendance').attr('data-attendance-id', newAid);
 
-                        button.html(originalHtml).prop('disabled', false);
-                    } else {
-                        alert('Error: ' + data.message);
-                        button.html(originalHtml).prop('disabled', false);
-                    }
-                },
-                error: function(xhr) {
-                    var msg = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Failed to mark attendance';
-                    alert('Error: ' + msg);
-                    button.html(originalHtml).prop('disabled', false);
+                    button.html(originalHtml);
+                    button.prop('disabled', false);
+                } else {
+                    alert('✗ Error: ' + data.message);
+                    button.html(originalHtml);
+                    button.prop('disabled', false);
                 }
+            })
+            .catch(error => {
+                alert('✗ Error marking attendance. Please try again.');
+                console.error(error);
+                button.html(originalHtml);
+                button.prop('disabled', false);
             });
 
         } else {
             // Existing attendance - update via API
             fetch('/api/attendance/update', {
                 method: 'POST',
+                credentials: 'same-origin',
                 headers: {
                     'Content-Type': 'application/json',
                 },
@@ -316,105 +314,51 @@ $(document).ready(function() {
                 if (data.success) {
                     var badgeHtml = '';
                     if (newStatus === 'present') badgeHtml = '<span class="badge bg-success">Present</span>';
-                    else if (newStatus === 'late') badgeHtml = '<span class="badge bg-warning">Late</span>';
-                    else if (newStatus === 'absent') badgeHtml = '<span class="badge bg-danger">Absent</span>';
+                    if (newStatus === 'late') badgeHtml = '<span class="badge bg-warning">Late</span>';
+                    if (newStatus === 'absent') badgeHtml = '<span class="badge bg-danger">Absent</span>';
 
                     $('#status-badge-' + studentId).html(badgeHtml);
-                    
-                    // Flash the row
-                    $('#student-row-' + studentId).addClass('table-success');
-                    setTimeout(function() {
-                        $('#student-row-' + studentId).removeClass('table-success');
-                    }, 500);
-                    
                     updateStats();
 
-                    button.html(originalHtml).prop('disabled', false);
+                    button.html(originalHtml);
+                    button.prop('disabled', false);
                 } else {
-                    alert('Error: ' + data.message);
-                    button.html(originalHtml).prop('disabled', false);
+                    alert('✗ Error: ' + data.message);
+                    button.html(originalHtml);
+                    button.prop('disabled', false);
                 }
             })
             .catch(error => {
-                alert('Error updating attendance');
+                alert('✗ Error updating attendance. Please try again.');
                 console.error(error);
-                button.html(originalHtml).prop('disabled', false);
+                button.html(originalHtml);
+                button.prop('disabled', false);
             });
         }
     });
     
     // Mark all present
     $('#markAllPresent').click(function() {
-        if (!confirm('Mark all unmarked students as PRESENT?')) return;
-        
-        var buttons = $('.edit-attendance[data-status="present"]').filter(function() {
-            var studentId = $(this).data('student');
-            return $('#status-badge-' + studentId).text().includes('Not Marked');
-        });
-        
-        buttons.each(function(index) {
-            var button = $(this);
-            setTimeout(function() {
-                button.click();
-            }, index * 100);
-        });
+        if (confirm('Mark all students as present?')) {
+            $('.mark-attendance[data-status="present"]').each(function(index) {
+                var button = $(this);
+                setTimeout(function() {
+                    button.click();
+                }, index * 100);
+            });
+        }
     });
     
     // Mark all absent
     $('#markAllAbsent').click(function() {
-        if (!confirm('Mark all unmarked students as ABSENT?')) return;
-        
-        var buttons = $('.edit-attendance[data-status="absent"]').filter(function() {
-            var studentId = $(this).data('student');
-            return $('#status-badge-' + studentId).text().includes('Not Marked');
-        });
-        
-        buttons.each(function(index) {
-            var button = $(this);
-            setTimeout(function() {
-                button.click();
-            }, index * 100);
-        });
-    });
-    
-    // Finalize attendance
-    $('#finalizeBtn').click(function() {
-        var unmarked = $('.badge.bg-secondary:contains("Not Marked")').length;
-        var confirmMsg = 'Submit final attendance and lock this session?\n\n';
-        
-        if (unmarked > 0) {
-            confirmMsg += 'WARNING: ' + unmarked + ' students are still not marked!\n';
+        if (confirm('Mark all students as absent?')) {
+            $('.mark-attendance[data-status="absent"]').each(function(index) {
+                var button = $(this);
+                setTimeout(function() {
+                    button.click();
+                }, index * 100);
+            });
         }
-        
-        confirmMsg += 'After submission, NO changes will be allowed.';
-        
-        if (!confirm(confirmMsg)) return;
-        
-        var btn = $(this);
-        var originalHtml = btn.html();
-        btn.html('<i class="bi bi-hourglass-split"></i> Finalizing...').prop('disabled', true);
-        
-        fetch('/api/attendance/finalize/{{ session_obj.id }}', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert('✓ Attendance finalized successfully!\n\nThis session is now locked.');
-                location.reload();
-            } else {
-                alert('Error: ' + data.message);
-                btn.html(originalHtml).prop('disabled', false);
-            }
-        })
-        .catch(error => {
-            alert('Error finalizing attendance');
-            console.error(error);
-            btn.html(originalHtml).prop('disabled', false);
-        });
     });
 });
 </script>
