@@ -16,25 +16,47 @@
 
 {% for department, courses in courses_by_dept.items() %}
 <div class="card mb-4">
-    <div class="card-header {% if department == 'Computer Science' %}bg-primary{% else %}bg-success{% endif %} text-white">
-        <h5 class="mb-0">
+    {% if department == 'Computer Science' %}
+    <div class="card-header" style="background-color: #0d6efd; color: white;">
+        <h5 class="mb-0" style="color: white;">
             <i class="bi bi-buildings"></i> {{ department }} 
             <span class="badge bg-light text-dark">{{ courses|length }} courses</span>
         </h5>
     </div>
+    {% else %}
+    <div class="card-header" style="background-color: #198754; color: white;">
+        <h5 class="mb-0" style="color: white;">
+            <i class="bi bi-buildings"></i> {{ department }} 
+            <span class="badge bg-light text-dark">{{ courses|length }} courses</span>
+        </h5>
+    </div>
+    {% endif %}
     <div class="card-body">
         <div class="table-responsive">
             <table class="table table-hover">
-                <thead>
+                {% if department == 'Computer Science' %}
+                <thead style="background-color: #cfe2ff;">
                     <tr>
-                        <th width="15%">Course Code</th>
-                        <th width="35%">Course Name</th>
-                        <th width="10%">Credits</th>
-                        <th width="10%">Year</th>
-                        <th width="10%">Semester</th>
-                        <th width="20%">Info</th>
+                        <th width="15%" style="color: #084298;">Course Code</th>
+                        <th width="35%" style="color: #084298;">Course Name</th>
+                        <th width="10%" style="color: #084298;">Credits</th>
+                        <th width="10%" style="color: #084298;">Year</th>
+                        <th width="10%" style="color: #084298;">Semester</th>
+                        <th width="20%" style="color: #084298;">Info</th>
                     </tr>
                 </thead>
+                {% else %}
+                <thead style="background-color: #d1e7dd;">
+                    <tr>
+                        <th width="15%" style="color: #0f5132;">Course Code</th>
+                        <th width="35%" style="color: #0f5132;">Course Name</th>
+                        <th width="10%" style="color: #0f5132;">Credits</th>
+                        <th width="10%" style="color: #0f5132;">Year</th>
+                        <th width="10%" style="color: #0f5132;">Semester</th>
+                        <th width="20%" style="color: #0f5132;">Info</th>
+                    </tr>
+                </thead>
+                {% endif %}
                 <tbody>
                     {% for course in courses %}
                     <tr>
@@ -57,8 +79,8 @@
 
 <!-- Summary Card -->
 <div class="card">
-    <div class="card-header bg-dark text-white">
-        <h5 class="mb-0"><i class="bi bi-bar-chart"></i> Course Statistics</h5>
+    <div class="card-header" style="background-color: #212529; color: white;">
+        <h5 class="mb-0" style="color: white;"><i class="bi bi-bar-chart"></i> Course Statistics</h5>
     </div>
     <div class="card-body">
         <div class="row text-center">

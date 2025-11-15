@@ -4,24 +4,21 @@
 <div class="row mb-4"><div class="col-md-12"><h2><i class="bi bi-file-earmark-text"></i> Attendance Report</h2></div></div>
 <div class="card mb-3">
     <div class="card-body">
-        <form method="GET" action="{{ url_for('admin_attendance_report') }}" class="row g-3">
-            <div class="col-md-3">
-                <label for="course_id" class="form-label">Course</label>
-                <select class="form-select" id="course_id" name="course_id">
-                    <option value="">All Courses</option>
+        <form method="GET" action="{{ url_for('admin_attendance_report') }}" class="row g-3" id="reportForm">
+            <div class="col-md-4">
+                <label for="course_id" class="form-label">Course *</label>
+                <select class="form-select" id="course_id" name="course_id" required>
+                    <option value="">Select a Course</option>
                     {% for course in courses %}
-                    <option value="{{ course.id }}">{{ course.course_code }}</option>
+                    <option value="{{ course.id }}" data-department="{{ course.department }}">
+                        {{ course.course_code }} - {{ course.course_name }}
+                    </option>
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-md-3">
-                <label for="department" class="form-label">Department</label>
-                <select class="form-select" id="department" name="department">
-                    <option value="">All Departments</option>
-                    {% for dept in departments %}
-                    <option value="{{ dept }}">{{ dept }}</option>
-                    {% endfor %}
-                </select>
+            <div class="col-md-4">
+                <label for="department" class="form-label">Department (Auto-filled)</label>
+                <input type="text" class="form-control" id="department" name="department" readonly style="background-color: #f0f0f0;">
             </div>
             <div class="col-md-2">
                 <label for="start_date" class="form-label">Start Date</label>
@@ -31,8 +28,15 @@
                 <label for="end_date" class="form-label">End Date</label>
                 <input type="date" class="form-control" id="end_date" name="end_date">
             </div>
-            <div class="col-md-2 d-flex align-items-end">
-                <button type="submit" class="btn btn-primary w-100">Filter</button>
+            <div class="col-md-12 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary me-2">
+                    <i class="bi bi-filter"></i> Generate Report
+                </button>
+                {% if report_data %}
+                <a href="{{ url_for('admin_download_report', course_id=request.args.get('course_id'), department=request.args.get('department'), start_date=request.args.get('start_date'), end_date=request.args.get('end_date')) }}" class="btn btn-success">
+                    <i class="bi bi-download"></i> Download Report (CSV)
+                </a>
+                {% endif %}
             </div>
         </form>
     </div>
@@ -58,11 +62,61 @@
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="7" class="text-center text-muted">No data available</td></tr>
+                    <tr><td colspan="7" class="text-center text-muted">Select a course and click "Generate Report" to view attendance data</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const courseSelect = document.getElementById('course_id');
+    const departmentInput = document.getElementById('department');
+    const startDateInput = document.getElementById('start_date');
+    const endDateInput = document.getElementById('end_date');
+    const form = document.getElementById('reportForm');
+
+    // Auto-fill department when course is selected
+    courseSelect.addEventListener('change', function() {
+        const selectedOption = this.options[this.selectedIndex];
+        const department = selectedOption.getAttribute('data-department');
+        departmentInput.value = department || '';
+    });
+
+    // Set minimum date for end date based on start date
+    startDateInput.addEventListener('change', function() {
+        if (this.value) {
+            // Set end date minimum to the day after start date
+            const startDate = new Date(this.value);
+            startDate.setDate(startDate.getDate() + 1);
+            const minEndDate = startDate.toISOString().split('T')[0];
+            endDateInput.setAttribute('min', minEndDate);
+            
+            // If end date is before start date, clear it
+            if (endDateInput.value && endDateInput.value <= this.value) {
+                endDateInput.value = minEndDate;
+            }
+        }
+    });
+
+    // Validate dates on form submit
+    form.addEventListener('submit', function(e) {
+        if (!courseSelect.value) {
+            e.preventDefault();
+            alert('Please select a course');
+            return false;
+        }
+
+        if (startDateInput.value && endDateInput.value) {
+            if (endDateInput.value <= startDateInput.value) {
+                e.preventDefault();
+                alert('End date must be after start date');
+                return false;
+            }
+        }
+    });
+});
+</script>
 {% endblock %}

@@ -17,15 +17,9 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
 import random
 
-import os
-
 app = Flask(__name__)
-# Load secret key from environment for stability across restarts. If not provided, fall back to an ephemeral key (development only).
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(16))
-if 'SECRET_KEY' not in os.environ:
-    app.logger.warning('Using ephemeral SECRET_KEY; set the SECRET_KEY environment variable for production to persist sessions and improve security.')
-# Allow DATABASE_URL env var (useful for production). Defaults to local sqlite file.
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///sams.db')
+app.config['SECRET_KEY'] = secrets.token_hex(16)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///sams.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)  # 30-minute timeout
 
@@ -125,6 +119,9 @@ class AttendanceSession(db.Model):
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, default=True)
+    is_finalized = db.Column(db.Boolean, default=False)
+    finalized_at = db.Column(db.DateTime)
+    finalized_by = db.Column(db.Integer, db.ForeignKey('users.id'))
     class_ref = db.relationship('Class', backref='attendance_sessions')
 
 class Attendance(db.Model):
@@ -138,17 +135,6 @@ class Attendance(db.Model):
     method = db.Column(db.String(20))
     session = db.relationship('AttendanceSession', backref='attendance_records')
     student = db.relationship('Student', backref='attendance_records')
-
-class Notification(db.Model):
-    __tablename__ = 'notifications'
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    title = db.Column(db.String(100), nullable=False)
-    message = db.Column(db.Text, nullable=False)
-    type = db.Column(db.String(20))
-    is_read = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    user = db.relationship('User', backref='notifications')
 
 class AuditLog(db.Model):
     __tablename__ = 'audit_logs'
@@ -179,13 +165,8 @@ def role_required(*roles):
             if 'user_id' not in session:
                 flash('Please log in to access this page.', 'warning')
                 return redirect(url_for('login'))
+            
             user = User.query.get(session['user_id'])
-            # If user record was removed or is missing, clear session and force re-login
-            if not user:
-                session.clear()
-                flash('Your session is invalid. Please log in again.', 'warning')
-                return redirect(url_for('login'))
-
             if user.role not in roles:
                 flash('You do not have permission to access this page.', 'danger')
                 return redirect(url_for('dashboard'))
@@ -205,43 +186,25 @@ def log_audit(action, entity_type=None, entity_id=None, details=None):
         )
         db.session.add(log)
         db.session.commit()
-    except Exception as e:
-        # Do not silently ignore audit logging failures — record to application logger for investigation.
-        app.logger.exception('Failed to write audit log: %s', e)
+    except:
+        pass
 
 def send_email(to_email, subject, body):
-    """Send an email using SMTP credentials from environment.
-
-    Required environment variables (recommended): SMTP_SERVER, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD
-    Returns True on success, False on failure.
-    """
     try:
-        SMTP_SERVER = os.environ.get('SMTP_SERVER', 'smtp.gmail.com')
-        SMTP_PORT = int(os.environ.get('SMTP_PORT', 587))
-        SMTP_USERNAME = os.environ.get('SMTP_USERNAME')
-        SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD')
-
-        if not SMTP_USERNAME or not SMTP_PASSWORD:
-            app.logger.warning('SMTP credentials not configured; skipping send_email')
-            return False
-
+        SMTP_SERVER = "smtp.gmail.com"
+        SMTP_PORT = 587
+        SMTP_USERNAME = "your_email@gmail.com"
+        SMTP_PASSWORD = "your_app_password"
+        
         msg = MIMEMultipart()
         msg['From'] = SMTP_USERNAME
         msg['To'] = to_email
         msg['Subject'] = subject
         msg.attach(MIMEText(body, 'html'))
-
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=10) as server:
-            server.ehlo()
-            if SMTP_PORT == 587:
-                server.starttls()
-                server.ehlo()
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            server.sendmail(SMTP_USERNAME, [to_email], msg.as_string())
-
+        
         return True
     except Exception as e:
-        app.logger.exception('Email error: %s', e)
+        print(f"Email error: {str(e)}")
         return False
 
 def calculate_attendance_percentage(student_id, class_id=None):
@@ -260,24 +223,23 @@ def calculate_attendance_percentage(student_id, class_id=None):
     
     return round((present_sessions / total_sessions) * 100, 2)
 
-
-# Helper getters to ensure profile records exist for the logged-in user
-def get_current_faculty():
-    faculty = Faculty.query.filter_by(user_id=session.get('user_id')).first()
-    if not faculty:
-        session.clear()
-        flash('Faculty profile not found. Please contact admin.', 'danger')
-        return None
-    return faculty
-
-
-def get_current_student():
-    student = Student.query.filter_by(user_id=session.get('user_id')).first()
-    if not student:
-        session.clear()
-        flash('Student profile not found. Please contact admin.', 'danger')
-        return None
-    return student
+def can_edit_attendance(session_obj):
+    """Check if attendance can be edited for this session"""
+    # If already finalized, cannot edit
+    if session_obj.is_finalized:
+        return False
+    
+    # Calculate session end datetime
+    session_end = datetime.combine(session_obj.date, session_obj.end_time)
+    
+    # If session hasn't ended yet, can edit
+    if datetime.now() < session_end:
+        return True
+    
+    # If session has ended, check if within 24 hours
+    hours_passed = (datetime.now() - session_end).total_seconds() / 3600
+    
+    return hours_passed <= 24
 
 # ==================== ROUTES ====================
 
@@ -322,39 +284,30 @@ def logout():
     flash('You have been logged out successfully.', 'info')
     return redirect(url_for('login'))
 
-@app.route('/account/change-password', methods=['GET', 'POST'])
+@app.route('/change-password', methods=['GET', 'POST'])
 @login_required
 def change_password():
-    user = User.query.get_or_404(session['user_id'])
-
     if request.method == 'POST':
-        current_password = request.form.get('current_password', '').strip()
-        new_password = request.form.get('new_password', '').strip()
-        confirm_password = request.form.get('confirm_password', '').strip()
-
+        current_password = request.form.get('current_password')
+        new_password = request.form.get('new_password')
+        confirm_password = request.form.get('confirm_password')
+        
+        user = User.query.get(session['user_id'])
+        
         if not check_password_hash(user.password_hash, current_password):
-            flash('Current password is incorrect.', 'danger')
-            return redirect(url_for('change_password'))
-
-        if len(new_password) < 8:
-            flash('New password must be at least 8 characters long.', 'warning')
-            return redirect(url_for('change_password'))
-
-        if new_password != confirm_password:
-            flash('New password and confirmation do not match.', 'warning')
-            return redirect(url_for('change_password'))
-
-        if check_password_hash(user.password_hash, new_password):
-            flash('New password cannot be the same as the current password.', 'warning')
-            return redirect(url_for('change_password'))
-
-        user.password_hash = generate_password_hash(new_password)
-        db.session.commit()
-        log_audit('Change Password', 'User', user.id, 'Password updated by account holder')
-        flash('Your password has been updated successfully.', 'success')
-        return redirect(url_for('dashboard'))
-
-    return render_template('account/change_password.html')
+            flash('Current password is incorrect', 'danger')
+        elif new_password != confirm_password:
+            flash('New passwords do not match', 'danger')
+        elif len(new_password) < 6:
+            flash('Password must be at least 6 characters', 'danger')
+        else:
+            user.password_hash = generate_password_hash(new_password)
+            db.session.commit()
+            log_audit('Change Password', 'User', user.id, 'User changed password')
+            flash('Password changed successfully!', 'success')
+            return redirect(url_for('dashboard'))
+    
+    return render_template('change_password.html')
 
 @app.route('/dashboard')
 @login_required
@@ -484,19 +437,55 @@ def admin_add_user():
 @app.route('/admin/users/<int:user_id>/delete', methods=['POST'])
 @role_required('admin')
 def admin_delete_user(user_id):
-    user = User.query.get_or_404(user_id)
-    
-    if user.role == 'admin' and User.query.filter_by(role='admin').count() <= 1:
-        flash('Cannot delete the last admin user.', 'danger')
+    try:
+        user = User.query.get_or_404(user_id)
+        
+        if user.role == 'admin' and User.query.filter_by(role='admin').count() <= 1:
+            flash('Cannot delete the last admin user.', 'danger')
+            return redirect(url_for('admin_users'))
+        
+        username = user.username
+        
+        # Manual cascade delete for SQLite compatibility
+        # Delete in the correct order to avoid foreign key constraint violations
+        
+        # Delete student-related records if user is a student
+        if user.role == 'student':
+            student = Student.query.filter_by(user_id=user_id).first()
+            if student:
+                # Delete attendance records first (references student_id)
+                Attendance.query.filter_by(student_id=student.id).delete()
+                
+                # Delete enrollments (references student_id)
+                Enrollment.query.filter_by(student_id=student.id).delete()
+                
+                # Delete student profile
+                db.session.delete(student)
+        
+        # Delete faculty-related records if user is a faculty
+        elif user.role == 'faculty':
+            faculty = Faculty.query.filter_by(user_id=user_id).first()
+            if faculty:
+                # Note: We don't delete classes, just the faculty profile
+                # Classes will need to be reassigned to another faculty manually
+                db.session.delete(faculty)
+        
+        # Delete audit logs for this user (references user_id)
+        AuditLog.query.filter_by(user_id=user_id).delete()
+        
+        # Finally, delete the user
+        db.session.delete(user)
+        db.session.commit()
+        
+        log_audit('Delete User', 'User', user_id, f'Deleted user {username} and all related records')
+        flash(f'User {username} and all related records deleted successfully.', 'success')
         return redirect(url_for('admin_users'))
     
-    username = user.username
-    db.session.delete(user)
-    db.session.commit()
-    
-    log_audit('Delete User', 'User', user_id, f'Deleted user {username}')
-    flash(f'User {username} deleted successfully.', 'success')
-    return redirect(url_for('admin_users'))
+    except Exception as e:
+        db.session.rollback()
+        app.logger.exception(f'Error deleting user {user_id}: {e}')
+        flash(f'Error deleting user: {str(e)}', 'danger')
+        return redirect(url_for('admin_users'))
 
 @app.route('/admin/courses')
 @role_required('admin')
@@ -559,11 +548,51 @@ def admin_classes():
 def admin_add_class():
     if request.method == 'POST':
         try:
+            import re
+            
             course_id = request.form.get('course_id')
             faculty_id = request.form.get('faculty_id')
-            section = request.form.get('section')
-            schedule = request.form.get('schedule')
-            room = request.form.get('room')
+            section = request.form.get('section', '').strip()
+            schedule = request.form.get('schedule', '').strip()
+            room = request.form.get('room', '').strip()
+            
+            # Validate section input
+            if not section:
+                flash('Section is required.', 'danger')
+                courses = Course.query.all()
+                faculty = Faculty.query.all()
+                return render_template('admin/add_class.html', courses=courses, faculty=faculty)
+            
+            # Validate schedule format: MWF 10:00-11:00
+            schedule_pattern = r'^[A-Z]+\s\d{2}:\d{2}-\d{2}:\d{2}$'
+            if not re.match(schedule_pattern, schedule):
+                flash('Schedule must be in format: MWF 10:00-11:00 (Days in UPPERCASE, space, time range with no spaces)', 'danger')
+                courses = Course.query.all()
+                faculty = Faculty.query.all()
+                return render_template('admin/add_class.html', courses=courses, faculty=faculty)
+            
+            # Validate room format: Lab 101 or Room 202
+            room_pattern = r'^(Lab|Room)\s\d{3}$'
+            if not re.match(room_pattern, room):
+                flash('Room must be in format: Lab 101 or Room 202 (Lab/Room, space, exactly 3 digits)', 'danger')
+                courses = Course.query.all()
+                faculty = Faculty.query.all()
+                return render_template('admin/add_class.html', courses=courses, faculty=faculty)
+            
+            # Check if students exist in this section
+            course = Course.query.get(course_id)
+            if course:
+                students_in_section = Student.query.filter_by(
+                    department=course.department,
+                    year=course.year,
+                    section=section
+                ).count()
+                
+                if students_in_section == 0:
+                    flash(f'Cannot create class: No students found in {course.department} Year {course.year} Section {section}.', 'danger')
+                    courses = Course.query.all()
+                    faculty = Faculty.query.all()
+                    return render_template('admin/add_class.html', courses=courses, faculty=faculty)
             
             class_obj = Class(
                 course_id=course_id,
@@ -648,6 +677,71 @@ def admin_attendance_report():
                          courses=courses,
                          departments=[d[0] for d in departments])
 
+@app.route('/admin/reports/attendance/download')
+@role_required('admin')
+def admin_download_report():
+    course_id = request.args.get('course_id', type=int)
+    department = request.args.get('department')
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
+    query = db.session.query(
+        Student.student_id,
+        User.full_name,
+        Student.department,
+        Student.section,
+        Course.course_name,
+        db.func.count(Attendance.id).label('total_sessions'),
+        db.func.sum(db.case((Attendance.status.in_(['present', 'late']), 1), else_=0)).label('present_count')
+    ).join(User, Student.user_id == User.id)\
+     .join(Enrollment, Enrollment.student_id == Student.id)\
+     .join(Class, Class.id == Enrollment.class_id)\
+     .join(Course, Course.id == Class.course_id)\
+     .join(AttendanceSession, AttendanceSession.class_id == Class.id)\
+     .join(Attendance, Attendance.session_id == AttendanceSession.id)
+    
+    if course_id:
+        query = query.filter(Course.id == course_id)
+    if department:
+        query = query.filter(Student.department == department)
+    if start_date:
+        query = query.filter(AttendanceSession.date >= start_date)
+    if end_date:
+        query = query.filter(AttendanceSession.date <= end_date)
+    
+    results = query.group_by(Student.id, Course.id).all()
+    
+    # Create CSV
+    si = StringIO()
+    writer = csv.writer(si)
+    writer.writerow(['Student ID', 'Name', 'Department', 'Section', 'Course', 'Total Sessions', 'Present', 'Percentage'])
+    
+    for row in results:
+        percentage = round((row.present_count / row.total_sessions * 100), 2) if row.total_sessions > 0 else 0
+        writer.writerow([
+            row.student_id,
+            row.full_name,
+            row.department,
+            row.section,
+            row.course_name,
+            row.total_sessions,
+            row.present_count,
+            f"{percentage}%"
+        ])
+    
+    output = BytesIO()
+    output.write(si.getvalue().encode())
+    output.seek(0)
+    
+    filename = f'attendance_report_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+    
+    return send_file(
+        output,
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name=filename
+    )
+
 # ==================== FACULTY ROUTES ====================
 
 @app.route('/faculty/dashboard')
@@ -712,6 +806,15 @@ def faculty_create_session():
             start_time_obj = datetime.strptime(start_time_str, '%H:%M').time()
             end_time_obj = datetime.strptime(end_time_str, '%H:%M').time()
             
+            # ADD THIS VALIDATION
+            if end_time_obj <= start_time_obj:
+                flash('End time must be after start time.', 'danger')
+                faculty = get_current_faculty()
+                if not faculty:
+                    return redirect(url_for('login'))
+                my_classes = Class.query.filter_by(faculty_id=faculty.id).all()
+                return render_template('faculty/create_session.html', classes=my_classes)
+            
             session_obj = AttendanceSession(
                 class_id=class_id,
                 date=session_date,
@@ -757,16 +860,36 @@ def faculty_mark_attendance_page(session_id):
         for record in Attendance.query.filter_by(session_id=session_id).all()
     }
     
+    # Check if editing is allowed
+    can_edit = can_edit_attendance(session_obj)
+    
     return render_template('faculty/mark_attendance.html',
                          session_obj=session_obj,
                          enrollments=enrollments,
-                         attendance_records=attendance_records)
+                         attendance_records=attendance_records,
+                         can_edit=can_edit)
 
 @app.route('/faculty/session/<int:session_id>')
 @role_required('faculty')
 def faculty_session_detail(session_id):
-    """Proxy route kept for backwards compatibility; reuse mark_attendance view."""
-    return redirect(url_for('faculty_mark_attendance_page', session_id=session_id))
+    session_obj = AttendanceSession.query.get_or_404(session_id)
+    
+    faculty = Faculty.query.filter_by(user_id=session['user_id']).first()
+    if session_obj.class_ref.faculty_id != faculty.id:
+        flash('You do not have access to this session.', 'danger')
+        return redirect(url_for('faculty_classes'))
+    
+    enrollments = Enrollment.query.filter_by(class_id=session_obj.class_id).all()
+    
+    attendance_records = {
+        record.student_id: record 
+        for record in Attendance.query.filter_by(session_id=session_id).all()
+    }
+    
+    return render_template('faculty/session_detail.html',
+                         session_obj=session_obj,
+                         enrollments=enrollments,
+                         attendance_records=attendance_records)
 
 @app.route('/faculty/attendance/mark', methods=['POST'])
 @role_required('faculty')
@@ -775,15 +898,22 @@ def faculty_mark_attendance():
         session_id = request.form.get('session_id')
         student_id = request.form.get('student_id')
         status = request.form.get('status')
-        # Ensure faculty has permission to modify this session
-        session_obj = AttendanceSession.query.get(session_id)
+        
+        # Get session and check permissions
+        session_obj = AttendanceSession.query.get_or_404(session_id)
         faculty = get_current_faculty()
         if not faculty:
             return jsonify({'success': False, 'message': 'Faculty profile not found'}), 403
 
         if not session_obj or session_obj.class_ref.faculty_id != faculty.id:
             return jsonify({'success': False, 'message': 'Unauthorized access to this session'}), 403
-
+        
+        # Check 24-hour edit window (only if session has ended)
+        session_end_datetime = datetime.combine(session_obj.date, session_obj.end_time)
+        time_since_end = datetime.now() - session_end_datetime
+        if time_since_end > timedelta(hours=0) and time_since_end > timedelta(hours=24):
+            return jsonify({'success': False, 'message': 'Edit window expired. You can only edit attendance within 24 hours of class end time.'}), 400
+        
         existing = Attendance.query.filter_by(
             session_id=session_id,
             student_id=student_id
@@ -794,6 +924,7 @@ def faculty_mark_attendance():
             existing.marked_at = datetime.utcnow()
             existing.marked_by = session['user_id']
             existing.method = 'manual'
+            attendance_id = existing.id
         else:
             attendance = Attendance(
                 session_id=session_id,
@@ -803,30 +934,14 @@ def faculty_mark_attendance():
                 method='manual'
             )
             db.session.add(attendance)
+            db.session.flush()  # Get the ID before commit
+            attendance_id = attendance.id
         
         db.session.commit()
-
-        # Check for low attendance and send notification
-        if status == 'absent':
-            student = Student.query.get(student_id)
-            percentage = calculate_attendance_percentage(student_id, session_obj.class_id)
-
-            if percentage < 75:
-                # Create notification for student
-                notification = Notification(
-                    user_id=student.user_id,
-                    title='⚠️ Low Attendance Alert',
-                    message=f'Your attendance in {session_obj.class_ref.course.course_name} has dropped to {percentage}%. You need to maintain at least 75% attendance to be eligible for exams. Please attend classes regularly.',
-                    type='low_attendance'
-                )
-                db.session.add(notification)
-                db.session.commit()
-
-        # Audit: log with the attendance id when possible
-        attendance_id = existing.id if existing else attendance.id
-        log_audit('Mark Attendance', 'Attendance', attendance_id,
-                 f'Set status={status} for student {student_id} in session {session_id} by faculty {faculty.id}')
-
+        
+        log_audit('Mark Attendance', 'Attendance', attendance_id, 
+                 f'Marked {status} for student {student_id} in session {session_id}')
+        
         return jsonify({'success': True, 'message': 'Attendance marked successfully', 'attendance_id': attendance_id})
     
     except Exception as e:
@@ -893,6 +1008,7 @@ def faculty_export_csv(class_id):
     faculty = get_current_faculty()
     if not faculty:
         return redirect(url_for('login'))
+    
     if class_obj.faculty_id != faculty.id:
         flash('You do not have access to this class.', 'danger')
         return redirect(url_for('faculty_classes'))
@@ -1015,15 +1131,32 @@ def faculty_export_pdf(class_id):
         download_name=f'attendance_report_{class_obj.course.course_code}_Section{class_obj.section}.pdf'
     )
 
+# Helper getters to ensure profile records exist for the logged-in user
+def get_current_faculty():
+    faculty = Faculty.query.filter_by(user_id=session.get('user_id')).first()
+    if not faculty:
+        session.clear()
+        flash('Faculty profile not found. Please contact admin.', 'danger')
+        return None
+    return faculty
+
+
+def get_current_student():
+    student = Student.query.filter_by(user_id=session.get('user_id')).first()
+    if not student:
+        session.clear()
+        flash('Student profile not found. Please contact admin.', 'danger')
+        return None
+    return student
+
+
 # ==================== STUDENT ROUTES ====================
 
 @app.route('/student/dashboard')
 @role_required('student')
 def student_dashboard():
-    student = get_current_student()
-    if not student:
-        return redirect(url_for('login'))
-
+    student = Student.query.filter_by(user_id=session['user_id']).first()
+    
     enrollments = Enrollment.query.filter_by(student_id=student.id).all()
     
     attendance_summary = []
@@ -1049,27 +1182,14 @@ def student_dashboard():
             'percentage': percentage
         })
     
-    # Get unread notifications
-    unread_count = Notification.query.filter_by(
-        user_id=session['user_id'],
-        is_read=False
-    ).count()
-    
-    notifications = Notification.query.filter_by(user_id=session['user_id'])\
-                                     .order_by(Notification.created_at.desc()).limit(5).all()
-    
     return render_template('student/dashboard.html',
                          student=student,
-                         attendance_summary=attendance_summary,
-                         notifications=notifications,
-                         unread_count=unread_count)
+                         attendance_summary=attendance_summary)
 
 @app.route('/student/attendance')
 @role_required('student')
 def student_attendance():
-    student = get_current_student()
-    if not student:
-        return redirect(url_for('login'))
+    student = Student.query.filter_by(user_id=session['user_id']).first()
     enrollments = Enrollment.query.filter_by(student_id=student.id).all()
     
     return render_template('student/attendance.html',
@@ -1079,9 +1199,7 @@ def student_attendance():
 @app.route('/student/attendance/<int:class_id>')
 @role_required('student')
 def student_class_attendance(class_id):
-    student = get_current_student()
-    if not student:
-        return redirect(url_for('login'))
+    student = Student.query.filter_by(user_id=session['user_id']).first()
     class_obj = Class.query.get_or_404(class_id)
     
     enrollment = Enrollment.query.filter_by(student_id=student.id, class_id=class_id).first()
@@ -1104,19 +1222,6 @@ def student_class_attendance(class_id):
                          records=records,
                          percentage=percentage)
 
-@app.route('/student/notifications')
-@role_required('student')
-def student_notifications():
-    notifications = Notification.query.filter_by(user_id=session['user_id'])\
-                                     .order_by(Notification.created_at.desc()).all()
-
-    # Mark all as read
-    for notif in notifications:
-        notif.is_read = True
-    db.session.commit()
-
-    return render_template('student/notifications.html', notifications=notifications)
-
 # ==================== API ROUTES ====================
 
 @app.route('/api/attendance/update', methods=['POST'])
@@ -1137,6 +1242,16 @@ def api_update_attendance():
         if session_obj.class_ref.faculty_id != faculty.id:
             return jsonify({'success': False, 'message': 'Unauthorized access'}), 403
         
+        # Check if session is finalized
+        if session_obj.is_finalized:
+            return jsonify({'success': False, 'message': 'This session has been finalized and cannot be edited'}), 403
+        
+        # Check 24-hour edit window (only if session has ended)
+        session_end_datetime = datetime.combine(session_obj.date, session_obj.end_time)
+        time_since_end = datetime.now() - session_end_datetime
+        if time_since_end > timedelta(hours=0) and time_since_end > timedelta(hours=24):
+            return jsonify({'success': False, 'message': 'Edit window expired. You can only edit attendance within 24 hours of class end time.'}), 403
+        
         # Update the attendance
         attendance.status = new_status
         attendance.marked_at = datetime.utcnow()
@@ -1145,9 +1260,47 @@ def api_update_attendance():
         
         log_audit('Update Attendance', 'Attendance', attendance_id, 
                  f'Updated attendance status to {new_status}')
-        # Return the affected student id and new status so the UI can update without a reload
-        return jsonify({'success': True, 'message': 'Attendance updated successfully', 'attendance_id': attendance_id, 'student_id': attendance.student_id, 'status': attendance.status})
+        
+        return jsonify({'success': True, 'message': 'Attendance updated successfully'})
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 400
 
+@app.route('/api/attendance/finalize/<int:session_id>', methods=['POST'])
+@role_required('faculty')
+def api_finalize_attendance(session_id):
+    """Finalize attendance session - locks it from further edits"""
+    try:
+        session_obj = AttendanceSession.query.get_or_404(session_id)
+        
+        # Verify faculty has access
+        faculty = Faculty.query.filter_by(user_id=session['user_id']).first()
+        if session_obj.class_ref.faculty_id != faculty.id:
+            return jsonify({'success': False, 'message': 'Unauthorized access'}), 403
+        
+        # Check if already finalized
+        if session_obj.is_finalized:
+            return jsonify({'success': False, 'message': 'Session already finalized'}), 400
+        
+        # Check 24-hour window
+        session_end_datetime = datetime.combine(session_obj.date, session_obj.end_time)
+        time_since_end = datetime.now() - session_end_datetime
+        if time_since_end > timedelta(hours=24):
+            return jsonify({'success': False, 'message': '24-hour edit window has expired. Session automatically locked.'}), 400
+        
+        # Finalize the session
+        session_obj.is_finalized = True
+        session_obj.finalized_at = datetime.utcnow()
+        session_obj.finalized_by = session['user_id']
+        session_obj.is_active = False
+        db.session.commit()
+        
+        log_audit('Finalize Session', 'AttendanceSession', session_id, 
+                 f'Finalized attendance session for class {session_obj.class_id}')
+        
+        return jsonify({'success': True, 'message': 'Attendance finalized successfully. No further edits are allowed.'})
+    
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 400
@@ -1239,9 +1392,9 @@ def init_db():
             db.session.commit()
             print("✓ Created 12 courses (7 CS + 5 IT)")
             
-            # FIXED: Organized class creation matching course years
+            # FIXED: Ensure each faculty gets exactly 3 classes
             print("\n🎓 Creating organized class structure...")
-            print("   6 Sections across 3 years × 2 courses each = 12 Classes")
+            print("   Each faculty gets exactly 3 classes (5 faculty × 3 = 15 total classes)")
             
             # Define sections with their respective years
             section_year_mapping = {
@@ -1255,20 +1408,22 @@ def init_db():
                         'TTS 09:00-10:00', 'TTS 10:00-11:00', 'TTS 11:00-12:00']
             
             classes_list = []
-            for section, year in section_year_mapping.items():
-                # Get courses for this year
-                year_courses = [c for c in courses_list if c.year == year]
-                # Select 2 courses for this section
-                selected_courses = random.sample(year_courses, min(2, len(year_courses)))
+            
+            # Assign 3 classes to each faculty
+            for faculty in faculty_list:
+                # Get courses from faculty's department
+                dept_courses = [c for c in courses_list if c.department == faculty.department]
+                
+                # Randomly select 3 courses for this faculty
+                selected_courses = random.sample(dept_courses, min(3, len(dept_courses)))
                 
                 for course in selected_courses:
-                    # Assign faculty based on department
-                    dept_faculty = [f for f in faculty_list if f.department == course.department]
-                    assigned_faculty = random.choice(dept_faculty)
+                    # Randomly assign a section
+                    section = random.choice(list(section_year_mapping.keys()))
                     
                     class_obj = Class(
                         course_id=course.id,
-                        faculty_id=assigned_faculty.id,
+                        faculty_id=faculty.id,
                         section=section,
                         schedule=random.choice(schedules),
                         room=random.choice(rooms)
@@ -1277,7 +1432,8 @@ def init_db():
                     classes_list.append(class_obj)
             
             db.session.commit()
-            print(f"✓ Created {len(classes_list)} classes (across Years 1, 2, 3)")
+            print(f"✓ Created {len(classes_list)} classes")
+            print(f"✓ Each of the 5 faculty members has 3 classes")
             
             # Create 240 students (40 per section, 6 sections)
             print("\n👥 Creating students...")
@@ -1419,7 +1575,6 @@ def init_db():
             print(f"  ✓ Enrollments: {Enrollment.query.count()}")
             print(f"  ✓ Attendance Sessions: {AttendanceSession.query.count()}")
             print(f"  ✓ Attendance Records: {Attendance.query.count()}")
-            print(f"  ✓ Notifications: {Notification.query.count()}")
             
             print("\n🎓 Structure:")
             print("  • 6 Sections (A, B = Year 1; C, D = Year 2; E, F = Year 3)")
@@ -1442,7 +1597,4 @@ def init_db():
 
 if __name__ == '__main__':
     init_db()
-    # Read debug flag from environment so production doesn't accidentally enable the debugger
-    debug_env = os.environ.get('FLASK_DEBUG', os.environ.get('DEBUG', 'False'))
-    debug = str(debug_env).lower() in ('1', 'true', 'yes')
-    app.run(debug=debug, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+    app.run(debug=True, host='0.0.0.0', port=5000)

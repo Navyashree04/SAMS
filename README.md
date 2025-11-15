@@ -187,6 +187,51 @@ Then uncomment the email sending code in the `send_email()` function.
 - Add more report types
 - Implement batch operations
 
+## Continuous Integration
+
+Automated testing runs in GitHub Actions via `.github/workflows/ci.yml` whenever you push to `main` or open a pull request targeting `main`.
+
+- **Environment:** Ubuntu runner with Python 3.12
+- **Dependencies:** Cached `pip` install from `requirements.txt`
+- **Validation:** Executes the entire pytest suite (`python -m pytest tests/ -v --maxfail=1 --disable-warnings`)
+- **Artifacts:** On failure, uploads `.pytest_cache` to help with debugging
+
+To verify locally before pushing, run:
+
+```bash
+python -m pytest tests/ -v --maxfail=1 --disable-warnings
+```
+
+## Containerized Deployment
+
+The repository ships with a ready-to-run `Dockerfile` so you can package the full Flask stack behind Gunicorn.
+
+```bash
+# Build the image locally
+docker build -t sams:latest .
+
+# Run it on port 5000
+docker run --rm -p 5000:5000 sams:latest
+```
+
+Environment variables:
+- `PORT` (default `5000`): change if your platform injects a custom port (e.g., Render/Heroku).
+
+## Continuous Delivery
+
+Workflow `.github/workflows/cd.yml` promotes every `main` push by:
+1. Re-running the pytest suite for safety.
+2. Building the Docker image defined above.
+3. Publishing the image to GitHub Container Registry (GHCR) as `ghcr.io/<owner>/students_attendance_management` with both `latest` and commit-sha tags.
+
+The job authenticates using the built-in `GITHUB_TOKEN`, so no manual secrets are required. You can pull the latest artifact onto any deployment target with:
+
+```bash
+docker pull ghcr.io/<owner>/students_attendance_management:latest
+```
+
+Replace `<owner>` with your GitHub org/user (`lakmannav-se-project`).
+
 ## Troubleshooting
 
 ### Common Issues
