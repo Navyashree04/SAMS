@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Faculty Dashboard - SAMS{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h2><i class="bi bi-speedometer2"></i> Faculty Dashboard</h2>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-door-open"></i> My Classes</h5>
+            </div>
+            <div class="card-body">
+                <div class="list-group">
+                    {% for class in my_classes %}
+                    <a href="{{ url_for('faculty_class_detail', class_id=class.id) }}" class="list-group-item list-group-item-action">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">{{ class.course.course_code }} - {{ class.course.course_name }}</h6>
+                            <small>Section {{ class.section }}</small>
+                        </div>
+                        <small>{{ class.schedule }} | {{ class.room }}</small>
+                    </a>
+                    {% else %}
+                    <p class="text-muted">No classes assigned</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="bi bi-calendar-today"></i> Today's Sessions</h5>
+            </div>
+            <div class="card-body">
+                {% if today_sessions %}
+                <div class="list-group">
+                    {% for session in today_sessions %}
+                    <a href="{{ url_for('faculty_session_detail', session_id=session.id) }}" class="list-group-item list-group-item-action">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">{{ session.class_ref.course.course_name }}</h6>
+                            <small>{{ session.start_time.strftime('%H:%M') }}</small>
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted">No sessions today</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="bi bi-lightning"></i> Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <a href="{{ url_for('faculty_create_session') }}" class="btn btn-primary me-2">
+                    <i class="bi bi-plus-circle"></i> Create New Session
+                </a>
+                <a href="{{ url_for('faculty_reports') }}" class="btn btn-secondary">
+                    <i class="bi bi-file-earmark-text"></i> View Reports
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

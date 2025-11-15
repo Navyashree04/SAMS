@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Add Class - SAMS{% endblock %}
+{% block content %}
+<div class="row mb-4"><div class="col-md-12"><h2><i class="bi bi-plus-circle"></i> Add New Class</h2></div></div>
+<div class="card">
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('admin_add_class') }}">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="course_id" class="form-label">Course *</label>
+                    <select class="form-select" id="course_id" name="course_id" required>
+                        <option value="">Select Course</option>
+                        {% for course in courses %}
+                        <option value="{{ course.id }}">{{ course.course_code }} - {{ course.course_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="faculty_id" class="form-label">Faculty *</label>
+                    <select class="form-select" id="faculty_id" name="faculty_id" required>
+                        <option value="">Select Faculty</option>
+                        {% for f in faculty %}
+                        <option value="{{ f.id }}">{{ f.user.full_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label for="section" class="form-label">Section *</label>
+                    <input type="text" class="form-control" id="section" name="section" required placeholder="e.g., A, B, C">
+                    <div class="form-text">Enter the section code. Verify students exist in this section.</div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label for="schedule" class="form-label">Schedule *</label>
+                    <input type="text" class="form-control" id="schedule" name="schedule" placeholder="e.g., MWF 10:00-11:00" required>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label for="room" class="form-label">Room *</label>
+                    <input type="text" class="form-control" id="room" name="room" required>
+                </div>
+            </div>
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-circle"></i> Create Class</button>
+                <a href="{{ url_for('admin_classes') }}" class="btn btn-secondary"><i class="bi bi-x-circle"></i> Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

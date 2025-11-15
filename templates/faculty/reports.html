@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Reports</h2>
+<div class="row">
+{% for class in classes %}
+    <div class="col-md-4 mb-3">
+        <div class="card">
+            <div class="card-body">
+                <h5>{{ class.course.course_name }}</h5>
+                <a href="{{ url_for('faculty_class_report', class_id=class.id) }}" class="btn btn-primary">View Report</a>
+                <a href="{{ url_for('faculty_export_csv', class_id=class.id) }}" class="btn btn-success">Export CSV</a>
+                <a href="{{ url_for('faculty_export_pdf', class_id=class.id) }}" class="btn btn-danger">Export PDF</a>
+            </div>
+        </div>
+    </div>
+{% endfor %}
+</div>
+{% endblock %}

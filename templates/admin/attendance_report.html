@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Attendance Report - SAMS{% endblock %}
+{% block content %}
+<div class="row mb-4"><div class="col-md-12"><h2><i class="bi bi-file-earmark-text"></i> Attendance Report</h2></div></div>
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('admin_attendance_report') }}" class="row g-3">
+            <div class="col-md-3">
+                <label for="course_id" class="form-label">Course</label>
+                <select class="form-select" id="course_id" name="course_id">
+                    <option value="">All Courses</option>
+                    {% for course in courses %}
+                    <option value="{{ course.id }}">{{ course.course_code }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label for="department" class="form-label">Department</label>
+                <select class="form-select" id="department" name="department">
+                    <option value="">All Departments</option>
+                    {% for dept in departments %}
+                    <option value="{{ dept }}">{{ dept }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="start_date" class="form-label">Start Date</label>
+                <input type="date" class="form-control" id="start_date" name="start_date">
+            </div>
+            <div class="col-md-2">
+                <label for="end_date" class="form-label">End Date</label>
+                <input type="date" class="form-control" id="end_date" name="end_date">
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary w-100">Filter</button>
+            </div>
+        </form>
+    </div>
+</div>
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead><tr><th>Student ID</th><th>Name</th><th>Department</th><th>Course</th><th>Total</th><th>Present</th><th>Percentage</th></tr></thead>
+                <tbody>
+                    {% for row in report_data %}
+                    <tr>
+                        <td>{{ row.student_id }}</td>
+                        <td>{{ row.name }}</td>
+                        <td>{{ row.department }}</td>
+                        <td>{{ row.course }}</td>
+                        <td>{{ row.total_sessions }}</td>
+                        <td>{{ row.present }}</td>
+                        <td>
+                            <span class="badge {% if row.percentage >= 75 %}bg-success{% elif row.percentage >= 60 %}bg-warning{% else %}bg-danger{% endif %}">
+                                {{ row.percentage }}%
+                            </span>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center text-muted">No data available</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

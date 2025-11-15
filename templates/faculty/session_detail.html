@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Attendance Session - {{ session_obj.date }}</h2>
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">Mark Attendance</div>
+            <div class="card-body">
+                <table class="table">
+                    <thead><tr><th>Student</th><th>Status</th><th>Action</th></tr></thead>
+                    <tbody>
+                    {% for enrollment in enrollments %}
+                    <tr>
+                        <td>{{ enrollment.student.user.full_name }}</td>
+                        <td>
+                            {% if enrollment.student.id in attendance_records %}
+                            <span class="badge bg-{{ 'success' if attendance_records[enrollment.student.id].status == 'present' else 'danger' }}">
+                                {{ attendance_records[enrollment.student.id].status|title }}
+                            </span>
+                            {% else %}
+                            <span class="badge bg-secondary">Not Marked</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-success mark-attendance" data-session="{{ session_obj.id }}" data-student="{{ enrollment.student.id }}" data-status="present">Present</button>
+                            <button class="btn btn-sm btn-danger mark-attendance" data-session="{{ session_obj.id }}" data-student="{{ enrollment.student.id }}" data-status="absent">Absent</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+        </div>
+    </div>
+</div>
+<script>
+$('.mark-attendance').click(function() {
+    var sessionId = $(this).data('session');
+    var studentId = $(this).data('student');
+    var status = $(this).data('status');
+    
+    $.post('{{ url_for("faculty_mark_attendance") }}', {
+        session_id: sessionId,
+        student_id: studentId,
+        status: status
+    }, function(data) {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.message);
+        }
+    });
+});
+</script>
+{% endblock %}

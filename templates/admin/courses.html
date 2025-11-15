@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Courses - SAMS{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-6">
+        <h2><i class="bi bi-book"></i> Manage Courses</h2>
+    </div>
+    <div class="col-md-6 text-end">
+        <a href="{{ url_for('admin_add_course') }}" class="btn btn-primary">
+            <i class="bi bi-plus-circle"></i> Add New Course
+        </a>
+    </div>
+</div>
+
+{% for department, courses in courses_by_dept.items() %}
+<div class="card mb-4">
+    <div class="card-header {% if department == 'Computer Science' %}bg-primary{% else %}bg-success{% endif %} text-white">
+        <h5 class="mb-0">
+            <i class="bi bi-buildings"></i> {{ department }} 
+            <span class="badge bg-light text-dark">{{ courses|length }} courses</span>
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th width="15%">Course Code</th>
+                        <th width="35%">Course Name</th>
+                        <th width="10%">Credits</th>
+                        <th width="10%">Year</th>
+                        <th width="10%">Semester</th>
+                        <th width="20%">Info</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for course in courses %}
+                    <tr>
+                        <td><strong class="text-primary">{{ course.course_code }}</strong></td>
+                        <td>{{ course.course_name }}</td>
+                        <td><span class="badge bg-info">{{ course.credits }}</span></td>
+                        <td>Year {{ course.year }}</td>
+                        <td>Sem {{ course.semester }}</td>
+                        <td>
+                            <span class="badge bg-secondary">{{ department }}</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<!-- Summary Card -->
+<div class="card">
+    <div class="card-header bg-dark text-white">
+        <h5 class="mb-0"><i class="bi bi-bar-chart"></i> Course Statistics</h5>
+    </div>
+    <div class="card-body">
+        <div class="row text-center">
+            {% for department, courses in courses_by_dept.items() %}
+            <div class="col-md-6 mb-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h3 class="mb-0">{{ courses|length }}</h3>
+                        <p class="text-muted mb-0">{{ department }}</p>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+{% endblock %}

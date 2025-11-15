@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ class_obj.course.course_name }} - Attendance Report</h2>
+<div class="card">
+    <div class="card-body">
+        <table class="table table-hover">
+            <thead><tr><th>Student ID</th><th>Name</th><th>Total</th><th>Present</th><th>Absent</th><th>Percentage</th></tr></thead>
+            <tbody>
+            {% for row in report_data %}
+            <tr>
+                <td>{{ row.student_id }}</td>
+                <td>{{ row.name }}</td>
+                <td>{{ row.total }}</td>
+                <td>{{ row.present }}</td>
+                <td>{{ row.absent }}</td>
+                <td><span class="badge bg-{{ 'success' if row.percentage >= 75 else 'danger' }}">{{ row.percentage }}%</span></td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

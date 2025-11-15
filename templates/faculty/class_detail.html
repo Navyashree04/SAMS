@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ class_obj.course.course_name }} - Section {{ class_obj.section }}</h2>
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">Enrolled Students ({{ enrollments|length }})</div>
+            <div class="card-body">
+                <ul class="list-group">
+                {% for enrollment in enrollments %}
+                    <li class="list-group-item">{{ enrollment.student.user.full_name }} ({{ enrollment.student.student_id }})</li>
+                {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">Recent Sessions</div>
+            <div class="card-body">
+                {% for session in sessions[:5] %}
+                <div class="mb-2">
+                    <a href="{{ url_for('faculty_session_detail', session_id=session.id) }}">
+                        {{ session.date }} - {{ session.start_time.strftime('%H:%M') }}
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

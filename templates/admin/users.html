@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Users - SAMS{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-6">
+        <h2><i class="bi bi-people"></i> Manage Users</h2>
+    </div>
+    <div class="col-md-6 text-end">
+        <a href="{{ url_for('admin_add_user') }}" class="btn btn-primary">
+            <i class="bi bi-person-plus"></i> Add New User
+        </a>
+    </div>
+</div>
+
+<!-- Admin Users -->
+<div class="card mb-4">
+    <div class="card-header bg-danger text-white">
+        <h5 class="mb-0"><i class="bi bi-shield-fill-check"></i> Administrators ({{ admins|length }})</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Username</th>
+                        <th>Full Name</th>
+                        <th>Email</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in admins %}
+                    <tr>
+                        <td>{{ user.id }}</td>
+                        <td><strong>{{ user.username }}</strong></td>
+                        <td>{{ user.full_name }}</td>
+                        <td>{{ user.email }}</td>
+                        <td>
+                            {% if user.is_active %}
+                            <span class="badge bg-success">Active</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <form method="POST" action="{{ url_for('admin_delete_user', user_id=user.id) }}" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this user?');">
+                                <button type="submit" class="btn btn-sm btn-danger">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Faculty Users -->
+<div class="card mb-4">
+    <div class="card-header bg-success text-white">
+        <h5 class="mb-0"><i class="bi bi-person-badge"></i> Faculty Members ({{ faculty_users|length }})</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Faculty ID</th>
+                        <th>Username</th>
+                        <th>Full Name</th>
+                        <th>Department</th>
+                        <th>Designation</th>
+                        <th>Email</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in faculty_users %}
+                    {% set faculty = user.faculty_profile[0] %}
+                    <tr>
+                        <td><strong>{{ faculty.faculty_id }}</strong></td>
+                        <td>{{ user.username }}</td>
+                        <td>{{ user.full_name }}</td>
+                        <td>{{ faculty.department }}</td>
+                        <td><span class="badge bg-info">{{ faculty.designation }}</span></td>
+                        <td>{{ user.email }}</td>
+                        <td>
+                            <form method="POST" action="{{ url_for('admin_delete_user', user_id=user.id) }}" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this user?');">
+                                <button type="submit" class="btn btn-sm btn-danger">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Students by Section -->
+{% for section_name, students in students_by_section.items() %}
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0">
+            <i class="bi bi-mortarboard"></i> {{ section_name }} 
+            <span class="badge bg-light text-dark">{{ students|length }} students</span>
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm">
+                <thead>
+                    <tr>
+                        <th width="5%">#</th>
+                        <th width="15%">Student ID</th>
+                        <th width="15%">Username</th>
+                        <th width="25%">Full Name</th>
+                        <th width="20%">Email</th>
+                        <th width="15%">Parent Email</th>
+                        <th width="5%">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for student in students %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td><strong>{{ student.student_id }}</strong></td>
+                        <td>{{ student.user.username }}</td>
+                        <td>{{ student.user.full_name }}</td>
+                        <td><small>{{ student.user.email }}</small></td>
+                        <td><small>{{ student.parent_email or 'N/A' }}</small></td>
+                        <td>
+                            <form method="POST" action="{{ url_for('admin_delete_user', user_id=student.user_id) }}" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this student?');">
+                                <button type="submit" class="btn btn-sm btn-danger">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+{% endblock %}
