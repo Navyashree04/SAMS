@@ -27,25 +27,9 @@ if 'SECRET_KEY' not in os.environ:
 # Allow DATABASE_URL env var (useful for production). Defaults to local sqlite file.
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///sams.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'connect_args': {'check_same_thread': False},
-    'pool_pre_ping': True,
-}
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)  # 30-minute timeout
 
 db = SQLAlchemy(app)
-
-# Enable foreign key constraints for SQLite (critical for CASCADE deletes)
-from sqlalchemy import event
-from sqlalchemy.engine import Engine
-
-@event.listens_for(Engine, "connect")
-def set_sqlite_pragma(dbapi_conn, connection_record):
-    """Enable foreign keys for every SQLite connection"""
-    if 'sqlite' in str(dbapi_conn):
-        cursor = dbapi_conn.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
 
 # ==================== SESSION TIMEOUT HANDLER ====================
 
@@ -83,7 +67,7 @@ class User(db.Model):
 class Student(db.Model):
     __tablename__ = 'students'
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     student_id = db.Column(db.String(20), unique=True, nullable=False)
     department = db.Column(db.String(100))
     year = db.Column(db.Integer)
@@ -95,7 +79,7 @@ class Student(db.Model):
 class Faculty(db.Model):
     __tablename__ = 'faculty'
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     faculty_id = db.Column(db.String(20), unique=True, nullable=False)
     department = db.Column(db.String(100))
     designation = db.Column(db.String(50))
@@ -125,8 +109,8 @@ class Class(db.Model):
 class Enrollment(db.Model):
     __tablename__ = 'enrollments'
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
-    class_id = db.Column(db.Integer, db.ForeignKey('classes.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    class_id = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=False)
     enrollment_date = db.Column(db.DateTime, default=datetime.utcnow)
     student = db.relationship('Student', backref='enrollments')
     class_ref = db.relationship('Class', backref='enrollments')
@@ -141,16 +125,13 @@ class AttendanceSession(db.Model):
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, default=True)
-    is_finalized = db.Column(db.Boolean, default=False)
-    finalized_at = db.Column(db.DateTime)
-    finalized_by = db.Column(db.Integer, db.ForeignKey('users.id'))
     class_ref = db.relationship('Class', backref='attendance_sessions')
 
 class Attendance(db.Model):
     __tablename__ = 'attendance'
     id = db.Column(db.Integer, primary_key=True)
-    session_id = db.Column(db.Integer, db.ForeignKey('attendance_sessions.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    session_id = db.Column(db.Integer, db.ForeignKey('attendance_sessions.id'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     status = db.Column(db.String(20), nullable=False)
     marked_at = db.Column(db.DateTime, default=datetime.utcnow)
     marked_by = db.Column(db.Integer, db.ForeignKey('users.id'))
@@ -161,7 +142,7 @@ class Attendance(db.Model):
 class Notification(db.Model):
     __tablename__ = 'notifications'
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     title = db.Column(db.String(100), nullable=False)
     message = db.Column(db.Text, nullable=False)
     type = db.Column(db.String(20))
@@ -503,56 +484,19 @@ def admin_add_user():
 @app.route('/admin/users/<int:user_id>/delete', methods=['POST'])
 @role_required('admin')
 def admin_delete_user(user_id):
-    try:
-        user = User.query.get_or_404(user_id)
-        
-        if user.role == 'admin' and User.query.filter_by(role='admin').count() <= 1:
-            flash('Cannot delete the last admin user.', 'danger')
-            return redirect(url_for('admin_users'))
-        
-        username = user.username
-        
-        # Manual cascade delete for SQLite compatibility
-        # SQLAlchemy tries to SET NULL before delete, which fails on NOT NULL constraints
-        
-        # Delete student-related records if user is a student
-        if user.role == 'student':
-            student = Student.query.filter_by(user_id=user_id).first()
-            if student:
-                # Delete attendance records
-                Attendance.query.filter_by(student_id=student.id).delete()
-                # Delete enrollments
-                Enrollment.query.filter_by(student_id=student.id).delete()
-                # Delete student profile
-                db.session.delete(student)
-        
-        # Delete faculty-related records if user is a faculty
-        elif user.role == 'faculty':
-            faculty = Faculty.query.filter_by(user_id=user_id).first()
-            if faculty:
-                # Note: We don't delete classes, just the faculty profile
-                # Classes will need to be reassigned to another faculty
-                db.session.delete(faculty)
-        
-        # Delete notifications
-        Notification.query.filter_by(user_id=user_id).delete()
-        
-        # Delete audit logs for this user
-        AuditLog.query.filter_by(user_id=user_id).delete()
-        
-        # Finally, delete the user
-        db.session.delete(user)
-        db.session.commit()
-        
-        log_audit('Delete User', 'User', user_id, f'Deleted user {username} and all related records')
-        flash(f'User {username} and all related records deleted successfully.', 'success')
+    user = User.query.get_or_404(user_id)
+    
+    if user.role == 'admin' and User.query.filter_by(role='admin').count() <= 1:
+        flash('Cannot delete the last admin user.', 'danger')
         return redirect(url_for('admin_users'))
     
-    except Exception as e:
-        db.session.rollback()
-        app.logger.exception(f'Error deleting user {user_id}: {e}')
-        flash(f'Error deleting user: {str(e)}', 'danger')
-        return redirect(url_for('admin_users'))
+    username = user.username
+    db.session.delete(user)
+    db.session.commit()
+    
+    log_audit('Delete User', 'User', user_id, f'Deleted user {username}')
+    flash(f'User {username} deleted successfully.', 'success')
+    return redirect(url_for('admin_users'))
 
 @app.route('/admin/courses')
 @role_required('admin')
@@ -617,31 +561,9 @@ def admin_add_class():
         try:
             course_id = request.form.get('course_id')
             faculty_id = request.form.get('faculty_id')
-            section = request.form.get('section', '').strip()
+            section = request.form.get('section')
             schedule = request.form.get('schedule')
             room = request.form.get('room')
-            
-            # Validate section input
-            if not section:
-                flash('Section is required.', 'danger')
-                courses = Course.query.all()
-                faculty = Faculty.query.all()
-                return render_template('admin/add_class.html', courses=courses, faculty=faculty)
-            
-            # Check if students exist in this section - BLOCK creation if none found
-            course = Course.query.get(course_id)
-            if course:
-                students_in_section = Student.query.filter_by(
-                    department=course.department,
-                    year=course.year,
-                    section=section
-                ).count()
-                
-                if students_in_section == 0:
-                    flash(f'Cannot create class: No students found in {course.department} Year {course.year} Section {section}. Please add students to this section first or verify the section name is correct.', 'danger')
-                    courses = Course.query.all()
-                    faculty = Faculty.query.all()
-                    return render_template('admin/add_class.html', courses=courses, faculty=faculty)
             
             class_obj = Class(
                 course_id=course_id,
@@ -789,15 +711,6 @@ def faculty_create_session():
             session_date = datetime.strptime(date_str, '%Y-%m-%d').date()
             start_time_obj = datetime.strptime(start_time_str, '%H:%M').time()
             end_time_obj = datetime.strptime(end_time_str, '%H:%M').time()
-            
-            # ADD THIS VALIDATION
-            if end_time_obj <= start_time_obj:
-                flash('End time must be after start time.', 'danger')
-                faculty = get_current_faculty()
-                if not faculty:
-                    return redirect(url_for('login'))
-                my_classes = Class.query.filter_by(faculty_id=faculty.id).all()
-                return render_template('faculty/create_session.html', classes=my_classes)
             
             session_obj = AttendanceSession(
                 class_id=class_id,
@@ -1101,46 +1014,6 @@ def faculty_export_pdf(class_id):
         as_attachment=True,
         download_name=f'attendance_report_{class_obj.course.course_code}_Section{class_obj.section}.pdf'
     )
-
-
-@app.route('/api/attendance/finalize/<int:session_id>', methods=['POST'])
-@role_required('faculty')
-def api_finalize_attendance(session_id):
-    """Finalize attendance session - locks it from further edits"""
-    try:
-        session_obj = AttendanceSession.query.get_or_404(session_id)
-        
-        # Verify faculty has access
-        faculty = Faculty.query.filter_by(user_id=session['user_id']).first()
-        if session_obj.class_ref.faculty_id != faculty.id:
-            return jsonify({'success': False, 'message': 'Unauthorized access'}), 403
-        
-        # Check if already finalized
-        if session_obj.is_finalized:
-            return jsonify({'success': False, 'message': 'Session already finalized'}), 400
-        
-        # Check 24-hour window
-        session_end_datetime = datetime.combine(session_obj.date, session_obj.end_time)
-        time_since_end = datetime.now() - session_end_datetime
-        if time_since_end > timedelta(hours=24):
-            return jsonify({'success': False, 'message': '24-hour edit window has expired. Session automatically locked.'}), 400
-        
-        # Finalize the session
-        session_obj.is_finalized = True
-        session_obj.finalized_at = datetime.utcnow()
-        session_obj.finalized_by = session['user_id']
-        session_obj.is_active = False
-        db.session.commit()
-        
-        log_audit('Finalize Session', 'AttendanceSession', session_id, 
-                 f'Finalized attendance session for class {session_obj.class_id}')
-        
-        return jsonify({'success': True, 'message': 'Attendance finalized successfully. No further edits are allowed.'})
-    
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': str(e)}), 400
-
 
 # ==================== STUDENT ROUTES ====================
 
