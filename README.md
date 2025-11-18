@@ -14,7 +14,6 @@ A comprehensive Flask-based web application for managing student attendance with
 
 ### Faculty Features
 -  Create Attendance Sessions
--  Generate QR Codes for attendance
 -  Manual Attendance Marking
 -  View Class Details and Student Lists
 -  Export Reports (CSV, PDF)
@@ -22,9 +21,7 @@ A comprehensive Flask-based web application for managing student attendance with
 
 ### Student Features
 -  View Attendance Summary
--  Scan QR Codes to mark attendance
 -  Detailed Attendance History
--  Notifications for low attendance
 -  Course-wise Attendance Breakdown
 
 ## Installation
@@ -115,24 +112,19 @@ sams/
 - Multiple methods: Manual marking, QR code scanning
 - Real-time attendance tracking
 - Automated absence notifications
-
-### 3. QR Code System
-- Faculty can generate time-limited QR codes
-- Students scan QR codes to mark attendance
-- QR codes expire after 1 hour for security
-
-### 4. Reporting & Analytics
+- 
+### 3. Reporting & Analytics
 - Comprehensive attendance reports
 - Export to CSV and PDF formats
 - Class-wise and student-wise analytics
 - Attendance percentage calculations
 
-### 5. Notification System
+### 4. Notification System
 - Low attendance warnings (< 75%)
 - Email notifications to parents
 - In-app notifications for students
 
-### 6. Audit Logging
+### 5. Audit Logging
 - All user actions are logged
 - IP address tracking
 - Timestamp for every action
@@ -280,3 +272,4 @@ Educational use only. Part of academic coursework.
 
 
 - v1.0 (2025) - Initial release with full CRUD operations and reporting
+
