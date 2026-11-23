@@ -1,5 +1,9 @@
 # SAMS - Student Attendance Management System
 
+> Team project at PES University. Forked from [LakManNav-SE-project/SAMS](https://github.com/LakManNav-SE-project/SAMS).
+>
+> **Stack:** Python, Flask, SQLAlchemy, SQLite, Jinja2, reportlab, pytest, Docker
+
 A comprehensive Flask-based web application for managing student attendance with role-based access control,  and detailed reporting.
 
 ## Features
@@ -257,3 +261,4 @@ Educational use only. Part of academic coursework.
 ## Version History
 
 - v1.0 (2025) - Initial release with full CRUD operations and reporting
+
