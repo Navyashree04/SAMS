@@ -1,0 +1,17 @@
+# Python virtual environments
+se/
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local databases and logs
+*.db
+*.sqlite3
+*.log
+
+# Secrets
+.env
